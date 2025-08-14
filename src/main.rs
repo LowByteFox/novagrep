@@ -1,5 +1,5 @@
 use getargs::{Opt, Options};
-use novagrep::{Config, StringMatcher, search};
+use novagrep::{matchers::RegexMatcher, search, Config, StringMatcher};
 use std::{env, error::Error, fs, io::ErrorKind, process};
 
 fn main() {
@@ -164,7 +164,15 @@ impl ArgParsing for Config {
                     cfg.all_strings = true;
                 }
                 Opt::Short('e') | Opt::Long("--extend") => {
-                    unimplemented!("Regex not implemented yet");
+                    let patterns = opts.value()?;
+
+                    for pattern in patterns.lines() {
+                        cfg.push_matcher(
+                            RegexMatcher::new(pattern, cfg.ignore_case)
+                        );
+                    }
+
+                    has_patterns = true;
                 }
                 Opt::Short('f') | Opt::Long("--from-file") => {
                     let file = opts.value()?;
@@ -172,7 +180,9 @@ impl ArgParsing for Config {
                     let patterns = fs::read_to_string(file)?;
                     for pattern in patterns.lines() {
                         if cfg.all_regex {
-                            unimplemented!("Regex not implemented yet");
+                            cfg.push_matcher(
+                                RegexMatcher::new(pattern, cfg.ignore_case)
+                            );
                         } else {
                             cfg.push_matcher(StringMatcher::new(pattern));
                         }
@@ -197,7 +207,9 @@ impl ArgParsing for Config {
         if !has_patterns {
             if let Some(query) = opts.next_positional() {
                 if cfg.all_regex {
-                    unimplemented!("Regex not implemented yet");
+                    cfg.push_matcher(
+                        RegexMatcher::new(query, cfg.ignore_case)
+                    );
                 } else {
                     cfg.push_matcher(StringMatcher::new(query));
                 }

@@ -1,3 +1,8 @@
+pub use matchers::{StringMatcher, Matcher};
+
+pub mod matchers;
+
+
 pub struct Config {
     sources: Vec<String>,
     patterns: Vec<Box<dyn Matcher>>,
@@ -39,28 +44,6 @@ impl Config {
 
     pub fn push_matcher(&mut self, matcher: Box<dyn Matcher>) {
         self.patterns.push(matcher);
-    }
-}
-
-pub trait Matcher {
-    fn match_line(&self, conf: &Config, line: &str) -> bool;
-}
-
-pub struct StringMatcher(String);
-
-impl StringMatcher {
-    pub fn new(query: &str) -> Box<dyn Matcher> {
-        Box::new(StringMatcher(query.to_string()))
-    }
-}
-
-impl Matcher for StringMatcher {
-    fn match_line(&self, conf: &Config, line: &str) -> bool {
-        if conf.ignore_case {
-            line.to_lowercase().contains(&self.0.to_lowercase())
-        } else {
-            line.contains(&self.0)
-        }
     }
 }
 
