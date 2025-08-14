@@ -83,8 +83,14 @@ pub fn search<'a>(config: &Config, contents: &'a str) -> Vec<SearchResult<'a>> {
     for line in contents.lines() {
         for pattern in config.patterns.iter() {
             if pattern.as_ref().match_line(&config, line) {
-                results.push(SearchResult { line, linenr });
-                break;
+                if !config.invert_match {
+                    results.push(SearchResult { line, linenr });
+                    break;
+                }
+            } else {
+                if config.invert_match {
+                    results.push(SearchResult { line, linenr });
+                }
             }
         }
         linenr += 1;

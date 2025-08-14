@@ -1,6 +1,6 @@
 use getargs::{Opt, Options};
 use novagrep::{Config, StringMatcher, search};
-use std::{env, error::Error, fs, process};
+use std::{env, error::Error, fs, io::ErrorKind, process};
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
@@ -20,7 +20,16 @@ fn run(config: Config) -> Result<(), Box<dyn Error>> {
     let sources = config.get_sources();
     if sources.len() == 1 {
         let source = &sources[0];
-        let contents = fs::read_to_string(&source)?;
+        let contents = match fs::read_to_string(&source) {
+            Ok(v) => v,
+            Err(e) => {
+                if config.suppress_missing && e.kind() == ErrorKind::NotFound {
+                    return Ok(());
+                } else {
+                    return Err(Box::new(e));
+                }
+            }
+        };
         let matched_lines = search(&config, &contents);
         if !config.quiet && config.list_matched_files && matched_lines.len() > 0 {
             println!("{source}");
@@ -40,7 +49,17 @@ fn run(config: Config) -> Result<(), Box<dyn Error>> {
         }
     } else {
         for source in sources {
-            let contents = fs::read_to_string(&source)?;
+            let contents = match fs::read_to_string(&source) {
+                Ok(v) => v,
+                Err(e) => {
+                    if config.suppress_missing && e.kind() == ErrorKind::NotFound {
+                        eprintln!("{source}: {e}");
+                        continue;
+                    } else {
+                        return Err(Box::new(e));
+                    }
+                }
+            };
             let matched_lines = search(&config, &contents);
             if !config.quiet && config.list_matched_files && matched_lines.len() > 0 {
                 println!("{source}");
@@ -53,9 +72,9 @@ fn run(config: Config) -> Result<(), Box<dyn Error>> {
             for line in matched_lines {
                 if !config.quiet {
                     if !config.show_line_numbers {
-                        println!("{source}: {}", line.line);
+                        println!("{source}:{}", line.line);
                     } else {
-                        println!("{source}:{}: {}", line.linenr, line.line);
+                        println!("{source}:{}:{}", line.linenr, line.line);
                     }
                 }
             }
