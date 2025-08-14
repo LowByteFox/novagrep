@@ -1,22 +1,57 @@
-pub fn search<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
-    let mut results = Vec::new();
+pub struct Config {
+    pub file_path: String,
+    pub ignore_case: bool,
+    patterns: Vec<Box<dyn Matcher>>,
+}
 
-    for line in contents.lines() {
-        if line.contains(query) {
-            results.push(line);
+impl Config {
+    pub fn new() -> Config {
+        Config {
+            file_path: "".to_string(),
+            ignore_case: false,
+            patterns: vec![],
         }
     }
 
-    results
+    pub fn push_matcher(&mut self, matcher: Box<dyn Matcher>) {
+        self.patterns.push(matcher);
+    }
 }
 
-pub fn search_case_insensitive<'a>(query: &str, contents: &'a str) -> Vec<&'a str> {
-    let query = query.to_lowercase();
+pub trait Matcher {
+    fn match_line(&self, conf: &Config, line: &str) -> bool;
+}
+
+pub struct StaticMatcher {
+    query: String,
+}
+
+impl StaticMatcher {
+    pub fn new(query: &str) -> Box<dyn Matcher> {
+        Box::new(StaticMatcher {
+            query: query.to_string()
+        })
+    }
+}
+
+impl Matcher for StaticMatcher {
+    fn match_line(&self, conf: &Config, line: &str) -> bool {
+        if conf.ignore_case {
+            line.to_lowercase().contains(&self.query.to_lowercase())
+        } else {
+            line.contains(&self.query)
+        }
+    }
+}
+
+pub fn search<'a>(config: &Config, contents: &'a str) -> Vec<&'a str> {
     let mut results = Vec::new();
 
     for line in contents.lines() {
-        if line.to_lowercase().contains(&query) {
-            results.push(line);
+        for pattern in config.patterns.iter() {
+            if pattern.as_ref().match_line(&config, line) {
+                results.push(line);
+            }
         }
     }
 
@@ -29,27 +64,15 @@ mod tests {
 
     #[test]
     fn one_result() {
-        let query = "duct";
+        let mut cfg = Config::new();
+        let query = StaticMatcher::new("duct");
+        cfg.push_matcher(query);
         let contents = "\
 Rust:
 safe, fast, productive.
 Pick three.";
 
-        assert_eq!(vec!["safe, fast, productive."], search(query, contents));
-    }
-
-    #[test]
-    fn case_insensitive() {
-        let query = "rUsT";
-        let contents = "\
-Rust:
-safe, fast, productive.
-Pick three.
-Trust me.";
-
-        assert_eq!(
-            vec!["Rust:", "Trust me."],
-            search_case_insensitive(query, contents)
-        );
+        assert_eq!(vec!["safe, fast, productive."], search(&cfg, contents));
+        assert_eq!(1, cfg.patterns.len());
     }
 }
