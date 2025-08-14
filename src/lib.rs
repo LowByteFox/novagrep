@@ -1,16 +1,28 @@
 pub struct Config {
-    pub file_path: String,
+    sources: Vec<String>,
     pub ignore_case: bool,
+    pub all_regex: bool,
+    pub all_strings: bool,
     patterns: Vec<Box<dyn Matcher>>,
 }
 
 impl Config {
     pub fn new() -> Config {
         Config {
-            file_path: "".to_string(),
+            sources: vec![],
             ignore_case: false,
             patterns: vec![],
+            all_regex: false,
+            all_strings: false,
         }
+    }
+
+    pub fn push_source(&mut self, source: String) {
+        self.sources.push(source);
+    }
+
+    pub fn get_sources(&self) -> &Vec<String> {
+        return &self.sources;
     }
 
     pub fn push_matcher(&mut self, matcher: Box<dyn Matcher>) {
@@ -22,24 +34,20 @@ pub trait Matcher {
     fn match_line(&self, conf: &Config, line: &str) -> bool;
 }
 
-pub struct StaticMatcher {
-    query: String,
-}
+pub struct StringMatcher(String);
 
-impl StaticMatcher {
+impl StringMatcher {
     pub fn new(query: &str) -> Box<dyn Matcher> {
-        Box::new(StaticMatcher {
-            query: query.to_string()
-        })
+        Box::new(StringMatcher(query.to_string()))
     }
 }
 
-impl Matcher for StaticMatcher {
+impl Matcher for StringMatcher {
     fn match_line(&self, conf: &Config, line: &str) -> bool {
         if conf.ignore_case {
-            line.to_lowercase().contains(&self.query.to_lowercase())
+            line.to_lowercase().contains(&self.0.to_lowercase())
         } else {
-            line.contains(&self.query)
+            line.contains(&self.0)
         }
     }
 }
@@ -51,6 +59,7 @@ pub fn search<'a>(config: &Config, contents: &'a str) -> Vec<&'a str> {
         for pattern in config.patterns.iter() {
             if pattern.as_ref().match_line(&config, line) {
                 results.push(line);
+                break;
             }
         }
     }
@@ -65,7 +74,7 @@ mod tests {
     #[test]
     fn one_result() {
         let mut cfg = Config::new();
-        let query = StaticMatcher::new("duct");
+        let query = StringMatcher::new("duct");
         cfg.push_matcher(query);
         let contents = "\
 Rust:
@@ -74,5 +83,20 @@ Pick three.";
 
         assert_eq!(vec!["safe, fast, productive."], search(&cfg, contents));
         assert_eq!(1, cfg.patterns.len());
+    }
+
+    #[test]
+    fn multiple_result() {
+        let mut cfg = Config::new();
+        let query = StringMatcher::new("rUsT");
+        cfg.ignore_case = true;
+        cfg.push_matcher(query);
+        let contents = "\
+Rust:
+safe, fast, productive.
+Pick three.
+Trust me.";
+
+        assert_eq!(vec!["Rust:", "Trust me."], search(&cfg, contents));
     }
 }

@@ -1,11 +1,15 @@
-use novagrep::{search, Config, StaticMatcher};
+use getargs::{Opt, Options};
+use novagrep::{search, Config, StringMatcher};
 use std::{env, error::Error, fs, process};
 
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
 
-    let config = Config::build(&args);
+    let config = Config::build(&args).unwrap_or_else(|err| {
+        eprintln!("Argument parsing error: {err}");
+        process::exit(1);
+    });
 
     if let Err(err) = run(config) {
         eprintln!("Application error: {err}");
@@ -14,23 +18,33 @@ fn main() {
 }
 
 fn run(config: Config) -> Result<(), Box<dyn Error>> {
-    let contents = fs::read_to_string(&config.file_path)?;
-
-    for line in search(&config, &contents) {
-        println!("{line}");
+    let sources = config.get_sources();
+    if sources.len() == 1 {
+        let source = &sources[0];
+        let contents = fs::read_to_string(&source)?;
+        for line in search(&config, &contents) {
+            println!("{line}");
+        }
+    } else {
+        for source in sources {
+            let contents = fs::read_to_string(&source)?;
+            for line in search(&config, &contents) {
+                println!("{source}: {line}");
+            }
+        }
     }
 
     Ok(())
 }
 
 fn usage() {
-    eprintln!("usage: novagrep [OPTIONS]... patterns [file...]
+    eprintln!("usage: novagrep [OPTIONS]... pattern [file...]
 
 Pattern Selection:
 \t-E, --extended\t\tMatch using regex, for grep compat
 \t-F, --fixed\t\tMatch using fixed strings, for grep compat
-\t-e, --extend\t\tAdd additional patterns using regex
-\t-f, --from-file\t\tLoad pattern list for match from a file
+\t-e, --extend pattern\tAdd additional patterns using regex
+\t-f, --from-file file\tLoad pattern list for match from a file
 \t-i, --ignore-case\tPerform case-insensitive matching
 
 Output Control:
@@ -71,26 +85,75 @@ Usage Details:
 }
 
 trait ArgParsing {
-     fn build(args: &[String]) -> Config;
+     fn build<'a>(args: &'a[String]) -> Result<Config, Box<dyn Error + 'a>>;
 }
 
 impl ArgParsing for Config {
-     fn build(args: &[String]) -> Config {
-        if args.len() < 2 {
+     fn build<'a>(args: &'a [String]) -> Result<Config, Box<dyn Error + 'a>> {
+        if args.is_empty() {
             usage();
         }
 
-        let query = &args[0];
-        let file_path = args[1].clone();
-        let ignore_case = env::var("IGNORE_CASE").is_ok();
-        let query = StaticMatcher::new(query);
-
+        let mut has_patterns = false;
         let mut cfg = Config::new();
-        cfg.ignore_case = ignore_case;
-        cfg.file_path = file_path;
+        let mut opts = Options::new(args.iter().map(String::as_str));
 
-        cfg.push_matcher(query);
+        while let Some(opt) = opts.next_opt().expect("argument parsing error") {
+            match opt {
+                Opt::Short('E') | Opt::Long("extended") => {
+                    if cfg.all_strings {
+                        return Err("Cannot use both -F and -E".into());
+                    }
 
-        cfg
+                    cfg.all_regex = true;
+                },
+                Opt::Short('F') | Opt::Long("fixed") => {
+                    if cfg.all_regex {
+                        return Err("Cannot use both -F and -E".into());
+                    }
+
+                    cfg.all_strings = true;
+                },
+                Opt::Short('e') | Opt::Long("--extend") => {
+                    unimplemented!("Regex not implemented yet");
+                },
+                Opt::Short('f') | Opt::Long("--from-file") => {
+                    let file = opts.value()?;
+
+                    let patterns = fs::read_to_string(file)?;
+                    for pattern in patterns.lines() {
+                        if cfg.all_regex {
+                            unimplemented!("Regex not implemented yet");
+                        } else {
+                            cfg.push_matcher(StringMatcher::new(
+                                pattern
+                            ));
+                        }
+                    }
+
+                    has_patterns = true;
+                },
+                Opt::Short('h') | Opt::Long("help") => usage(),
+                _ => {
+                    return Err(format!("unknown flag: {}", opt.to_string()).into());
+                }
+            }
+        }
+
+        if !has_patterns {
+            if let Some(query) = opts.next_positional() {
+                if cfg.all_regex {
+                    unimplemented!("Regex not implemented yet");
+                } else {
+                    cfg.push_matcher(StringMatcher::new(query));
+                }
+            }
+        }
+
+        for arg in opts.positionals() {
+            cfg.push_source(arg.to_string());
+        }
+
+        Ok(cfg)
     }
 }
