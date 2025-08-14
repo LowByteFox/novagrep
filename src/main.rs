@@ -1,7 +1,6 @@
 use getargs::{Opt, Options};
-use novagrep::{search, Config, StringMatcher};
+use novagrep::{Config, StringMatcher, search};
 use std::{env, error::Error, fs, process};
-
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
@@ -22,14 +21,43 @@ fn run(config: Config) -> Result<(), Box<dyn Error>> {
     if sources.len() == 1 {
         let source = &sources[0];
         let contents = fs::read_to_string(&source)?;
-        for line in search(&config, &contents) {
-            println!("{line}");
+        let matched_lines = search(&config, &contents);
+        if !config.quiet && config.list_matched_files && matched_lines.len() > 0 {
+            println!("{source}");
+            return Ok(());
+        } else if !config.quiet && config.show_count && matched_lines.len() > 0 {
+            println!("{}", matched_lines.len());
+            return Ok(());
+        }
+
+        for line in matched_lines {
+            if !config.quiet {
+                if config.show_line_numbers {
+                    print!("{}:", line.linenr);
+                }
+                println!("{}", line.line);
+            }
         }
     } else {
         for source in sources {
             let contents = fs::read_to_string(&source)?;
-            for line in search(&config, &contents) {
-                println!("{source}: {line}");
+            let matched_lines = search(&config, &contents);
+            if !config.quiet && config.list_matched_files && matched_lines.len() > 0 {
+                println!("{source}");
+                continue;
+            } else if !config.quiet && config.show_count && matched_lines.len() > 0 {
+                println!("{source}:{}", matched_lines.len());
+                continue;
+            }
+
+            for line in matched_lines {
+                if !config.quiet {
+                    if !config.show_line_numbers {
+                        println!("{source}: {}", line.line);
+                    } else {
+                        println!("{source}:{}: {}", line.linenr, line.line);
+                    }
+                }
             }
         }
     }
@@ -38,7 +66,8 @@ fn run(config: Config) -> Result<(), Box<dyn Error>> {
 }
 
 fn usage() {
-    eprintln!("usage: novagrep [OPTIONS]... pattern [file...]
+    eprintln!(
+        "usage: novagrep [OPTIONS]... pattern [file...]
 
 Pattern Selection:
 \t-E, --extended\t\tMatch using regex, for grep compat
@@ -80,16 +109,17 @@ Usage Details:
 \t             \t\thttps://github.com/brundonsmith/rust_lisp#included-functionality
 
 \t             \t\tEach Lisp script must return a lambda 
-\t             \t\tthat accepts a single argument.");
+\t             \t\tthat accepts a single argument."
+    );
     process::exit(1);
 }
 
 trait ArgParsing {
-     fn build<'a>(args: &'a[String]) -> Result<Config, Box<dyn Error + 'a>>;
+    fn build<'a>(args: &'a [String]) -> Result<Config, Box<dyn Error + 'a>>;
 }
 
 impl ArgParsing for Config {
-     fn build<'a>(args: &'a [String]) -> Result<Config, Box<dyn Error + 'a>> {
+    fn build<'a>(args: &'a [String]) -> Result<Config, Box<dyn Error + 'a>> {
         if args.is_empty() {
             usage();
         }
@@ -106,17 +136,17 @@ impl ArgParsing for Config {
                     }
 
                     cfg.all_regex = true;
-                },
+                }
                 Opt::Short('F') | Opt::Long("fixed") => {
                     if cfg.all_regex {
                         return Err("Cannot use both -F and -E".into());
                     }
 
                     cfg.all_strings = true;
-                },
+                }
                 Opt::Short('e') | Opt::Long("--extend") => {
                     unimplemented!("Regex not implemented yet");
-                },
+                }
                 Opt::Short('f') | Opt::Long("--from-file") => {
                     let file = opts.value()?;
 
@@ -125,14 +155,19 @@ impl ArgParsing for Config {
                         if cfg.all_regex {
                             unimplemented!("Regex not implemented yet");
                         } else {
-                            cfg.push_matcher(StringMatcher::new(
-                                pattern
-                            ));
+                            cfg.push_matcher(StringMatcher::new(pattern));
                         }
                     }
 
                     has_patterns = true;
-                },
+                }
+                Opt::Short('i') | Opt::Long("--ignore-case") => cfg.ignore_case = true,
+                Opt::Short('c') | Opt::Long("--count") => cfg.show_count = true,
+                Opt::Short('l') | Opt::Long("--list-files") => cfg.list_matched_files = true,
+                Opt::Short('n') | Opt::Long("--numbers") => cfg.show_line_numbers = true,
+                Opt::Short('q') | Opt::Long("--quiet") => cfg.quiet = true,
+                Opt::Short('s') | Opt::Long("--suppress") => cfg.suppress_missing = true,
+                Opt::Short('v') | Opt::Long("--invert-match") => cfg.invert_match = true,
                 Opt::Short('h') | Opt::Long("help") => usage(),
                 _ => {
                     return Err(format!("unknown flag: {}", opt.to_string()).into());
