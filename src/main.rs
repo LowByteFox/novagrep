@@ -20,64 +20,52 @@ fn run(config: Config) -> Result<(), Box<dyn Error>> {
     let sources = config.get_sources();
     if sources.len() == 1 {
         let source = &sources[0];
-        let contents = match fs::read_to_string(&source) {
-            Ok(v) => v,
-            Err(e) => {
-                if config.suppress_missing && e.kind() == ErrorKind::NotFound {
-                    return Ok(());
-                } else {
-                    return Err(Box::new(e));
-                }
-            }
-        };
-        let matched_lines = search(&config, &contents);
-        if !config.quiet && config.list_matched_files && matched_lines.len() > 0 {
-            println!("{source}");
-            return Ok(());
-        } else if !config.quiet && config.show_count && matched_lines.len() > 0 {
-            println!("{}", matched_lines.len());
-            return Ok(());
-        }
-
-        for line in matched_lines {
-            if !config.quiet {
-                if config.show_line_numbers {
-                    print!("{}:", line.linenr);
-                }
-                println!("{}", line.line);
-            }
-        }
+        handle_source(&config, source, false)?;
     } else {
         for source in sources {
-            let contents = match fs::read_to_string(&source) {
-                Ok(v) => v,
-                Err(e) => {
-                    if config.suppress_missing && e.kind() == ErrorKind::NotFound {
-                        eprintln!("{source}: {e}");
-                        continue;
-                    } else {
-                        return Err(Box::new(e));
-                    }
-                }
-            };
-            let matched_lines = search(&config, &contents);
-            if !config.quiet && config.list_matched_files && matched_lines.len() > 0 {
-                println!("{source}");
-                continue;
-            } else if !config.quiet && config.show_count && matched_lines.len() > 0 {
-                println!("{source}:{}", matched_lines.len());
-                continue;
-            }
+            handle_source(&config, source, true)?;
+        }
+    }
 
-            for line in matched_lines {
-                if !config.quiet {
-                    if !config.show_line_numbers {
-                        println!("{source}:{}", line.line);
-                    } else {
-                        println!("{source}:{}:{}", line.linenr, line.line);
-                    }
+    Ok(())
+}
+
+fn handle_source(config: &Config, source: &str, has_next: bool) -> Result<(), Box<dyn Error>> {
+    let contents = match fs::read_to_string(&source) {
+        Ok(v) => v,
+        Err(e) => {
+            if e.kind() == ErrorKind::NotFound {
+                if config.suppress_missing {
+                    return Ok(());
                 }
+                eprintln!("{source}: {e}");
+                return Ok(());
             }
+            return Err(Box::new(e));
+        }
+    };
+
+    let matched_lines = search(&config, &contents);
+    if !config.quiet && config.list_matched_files && matched_lines.len() > 0 {
+        println!("{source}");
+        return Ok(());
+    } else if !config.quiet && config.show_count && matched_lines.len() > 0 {
+        if has_next {
+            print!("{source}:");
+        }
+        println!("{}", matched_lines.len());
+        return Ok(());
+    }
+
+    for line in matched_lines {
+        if !config.quiet {
+            if has_next {
+                print!("{source}:");
+            }
+            if config.show_line_numbers {
+                print!("{}:", line.linenr);
+            }
+            println!("{}", line.line);
         }
     }
 
@@ -218,6 +206,10 @@ impl ArgParsing for Config {
 
         for arg in opts.positionals() {
             cfg.push_source(arg.to_string());
+        }
+
+        if cfg.get_sources().len() == 0 {
+            cfg.push_source("-".to_string());
         }
 
         Ok(cfg)
