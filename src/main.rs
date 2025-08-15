@@ -1,6 +1,6 @@
 use getargs::{Opt, Options};
 use novagrep::{matchers::RegexMatcher, search, Config, StringMatcher};
-use std::{env, error::Error, fs, io::ErrorKind, process};
+use std::{env, error::Error, fs, io, io::ErrorKind, process};
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
@@ -30,7 +30,24 @@ fn run(config: Config) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn handle_stdin(config: &Config, has_next: bool) -> Result<(), Box<dyn Error>> {
+    let mut linenr = 1;
+    loop {
+        let mut buf = String::new();
+
+        io::stdin().read_line(&mut buf)?;
+
+        let trimmed = buf.trim();
+        match_string(config, "(stdin)", trimmed, has_next, linenr)?;
+        linenr += 1;
+    }
+}
+
 fn handle_source(config: &Config, source: &str, has_next: bool) -> Result<(), Box<dyn Error>> {
+    if source == "-" {
+        return handle_stdin(config, has_next);
+    }
+
     let contents = match fs::read_to_string(&source) {
         Ok(v) => v,
         Err(e) => {
@@ -45,11 +62,16 @@ fn handle_source(config: &Config, source: &str, has_next: bool) -> Result<(), Bo
         }
     };
 
-    let matched_lines = search(&config, &contents);
-    if !config.quiet && config.list_matched_files && matched_lines.len() > 0 {
+    match_string(config, source, &contents, has_next, 0)
+}
+
+fn match_string(config: &Config, source: &str, content: &str, has_next: bool, linenr: usize) -> Result<(), Box<dyn Error>> {
+    let matched_lines = search(&config, &content);
+    let base_cond = !config.quiet && matched_lines.len() > 0;
+    if base_cond && config.list_matched_files {
         println!("{source}");
         return Ok(());
-    } else if !config.quiet && config.show_count && matched_lines.len() > 0 {
+    } else if base_cond && config.show_count {
         if has_next {
             print!("{source}:");
         }
@@ -63,7 +85,11 @@ fn handle_source(config: &Config, source: &str, has_next: bool) -> Result<(), Bo
                 print!("{source}:");
             }
             if config.show_line_numbers {
-                print!("{}:", line.linenr);
+                if linenr == 0 {
+                   print!("{}:", line.linenr);
+                } else {
+                   print!("{}:", linenr);
+                }
             }
             println!("{}", line.line);
         }
@@ -201,6 +227,8 @@ impl ArgParsing for Config {
                 } else {
                     cfg.push_matcher(StringMatcher::new(query));
                 }
+            } else {
+                return Err("missing pattern for matching".to_string().into());
             }
         }
 
