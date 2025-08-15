@@ -177,7 +177,7 @@ impl ArgParsing for Config {
 
                     cfg.all_strings = true;
                 }
-                Opt::Short('e') | Opt::Long("--extend") => {
+                Opt::Short('e') | Opt::Long("extend") => {
                     let patterns = opts.value()?;
 
                     for pattern in patterns.lines() {
@@ -188,7 +188,7 @@ impl ArgParsing for Config {
 
                     has_patterns = true;
                 }
-                Opt::Short('f') | Opt::Long("--from-file") => {
+                Opt::Short('f') | Opt::Long("from-file") => {
                     let file = opts.value()?;
 
                     let patterns = fs::read_to_string(file)?;
@@ -204,14 +204,17 @@ impl ArgParsing for Config {
 
                     has_patterns = true;
                 }
-                Opt::Short('i') | Opt::Long("--ignore-case") => cfg.ignore_case = true,
-                Opt::Short('c') | Opt::Long("--count") => cfg.show_count = true,
-                Opt::Short('l') | Opt::Long("--list-files") => cfg.list_matched_files = true,
-                Opt::Short('n') | Opt::Long("--numbers") => cfg.show_line_numbers = true,
-                Opt::Short('q') | Opt::Long("--quiet") => cfg.quiet = true,
-                Opt::Short('s') | Opt::Long("--suppress") => cfg.suppress_missing = true,
-                Opt::Short('v') | Opt::Long("--invert-match") => cfg.invert_match = true,
+                Opt::Short('i') | Opt::Long("ignore-case") => cfg.ignore_case = true,
+                Opt::Short('c') | Opt::Long("count") => cfg.show_count = true,
+                Opt::Short('l') | Opt::Long("list-files") => cfg.list_matched_files = true,
+                Opt::Short('n') | Opt::Long("numbers") => cfg.show_line_numbers = true,
+                Opt::Short('q') | Opt::Long("quiet") => cfg.quiet = true,
+                Opt::Short('s') | Opt::Long("suppress") => cfg.suppress_missing = true,
+                Opt::Short('v') | Opt::Long("invert-match") => cfg.invert_match = true,
                 Opt::Short('h') | Opt::Long("help") => usage(),
+                Opt::Long("exec") | Opt::Long("exec-match") | Opt::Long("lisp") | Opt::Long("lisp-match") => {
+                    unimplemented!("Please wait for the next release");
+                },
                 _ => {
                     return Err(format!("unknown flag: {}", opt.to_string()).into());
                 }
